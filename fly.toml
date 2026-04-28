@@ -1,9 +1,9 @@
-# fly.toml app configuration file for stage-2
+# fly.toml app configuration file generated for stage-3-weathered-waterfall-3026 on 2026-04-28T02:07:16+01:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'stage-2'
+app = 'stage-3-weathered-waterfall-3026'
 primary_region = 'ams'
 
 [build]
