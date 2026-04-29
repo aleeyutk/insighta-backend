@@ -7,8 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "seed": "node seed.js",
     "start": "node index.js",
-    "dev": "node index.js",
-    "lint": "eslint ."
+    "dev": "node index.js"
   },
   "keywords": [],
   "author": "",
@@ -29,8 +28,5 @@
     "sqlite": "^5.1.1",
     "sqlite3": "^6.0.1",
     "uuid": "^13.0.0"
-  },
-  "devDependencies": {
-    "eslint": "^8.0.0"
   }
 }
