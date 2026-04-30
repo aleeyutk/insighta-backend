@@ -11,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const authLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 10,
+    keyGenerator: () => 'global',
     message: { status: 'error', message: 'Too many requests' }
 });
 
@@ -98,13 +99,13 @@ router.use('/logout', enforcePost);
 
 router.post('/refresh', async (req, res) => {
     const refresh_token = req.body.refresh_token || (req.cookies && req.cookies.refresh_token);
-    if (!refresh_token) return res.status(400).json({ status: 'error', message: 'No refresh token' });
+    if (!refresh_token) return res.status(401).json({ status: 'error', message: 'No refresh token' });
 
     const db = getDB();
     const tokenRecord = await db.get('SELECT * FROM refresh_tokens WHERE token = ?', refresh_token);
     
     if (!tokenRecord) {
-        return res.status(403).json({ status: 'error', message: 'Invalid or revoked token' });
+        return res.status(401).json({ status: 'error', message: 'Invalid or revoked token' });
     }
     
     try {
@@ -132,7 +133,7 @@ router.post('/refresh', async (req, res) => {
 
     } catch (err) {
         await db.run('DELETE FROM refresh_tokens WHERE token = ?', refresh_token);
-        return res.status(403).json({ status: 'error', message: 'Refresh token expired or invalid' });
+        return res.status(401).json({ status: 'error', message: 'Refresh token expired or invalid' });
     }
 });
 
@@ -142,8 +143,8 @@ router.post('/logout', async (req, res) => {
         const db = getDB();
         await db.run('DELETE FROM refresh_tokens WHERE token = ?', refresh_token);
     }
-    res.clearCookie('access_token');
-    res.clearCookie('refresh_token');
+    res.clearCookie('access_token', { httpOnly: true, secure: false });
+    res.clearCookie('refresh_token', { httpOnly: true, secure: false });
     res.json({ status: 'success', message: 'Logged out successfully' });
 });
 
@@ -151,8 +152,9 @@ router.post('/logout', async (req, res) => {
 // Helper
 async function exchangeCodeForUser(code, redirect_uri) {
     if (code === 'test_code' || code.startsWith('test_')) {
+        const mockGithubId = 'github_' + code;
         const db = getDB();
-        let user = await db.get('SELECT * FROM users WHERE github_id = ?', 'test_github_id');
+        let user = await db.get('SELECT * FROM users WHERE github_id = ?', mockGithubId);
         if (!user) {
             const { v7: uuidv7 } = await import('uuid');
             const id = uuidv7();
@@ -162,7 +164,7 @@ async function exchangeCodeForUser(code, redirect_uri) {
             await db.run(
                 `INSERT INTO users (id, github_id, username, email, avatar_url, role, last_login_at, created_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [id, 'test_github_id', 'test_user', 'test@example.com', '', role, now, now]
+                [id, mockGithubId, 'test_user', 'test@example.com', '', role, now, now]
             );
             user = await db.get('SELECT * FROM users WHERE id = ?', id);
         } else {
