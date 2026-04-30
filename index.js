@@ -25,7 +25,7 @@ app.use('/auth', authRoutes);
 const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 60,
-    keyGenerator: (req) => req.user?.id || req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+    keyGenerator: (req) => req.user?.id || req.headers['fly-client-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress,
     validate: { ip: false },
     message: { status: 'error', message: 'Too many requests' }
 });

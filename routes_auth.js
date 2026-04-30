@@ -11,12 +11,15 @@ const rateLimit = require('express-rate-limit');
 const authLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 10,
+    keyGenerator: (req) => req.headers['fly-client-ip'] || req.ip,
     message: { status: 'error', message: 'Too many requests' }
 });
 
 router.use(authLimiter);
 
 router.get('/github', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
     const client_id = process.env.GITHUB_CLIENT_ID;
     if (!client_id) return res.status(500).json({ status: 'error', message: 'OAuth not configured' });
     
@@ -39,6 +42,7 @@ router.get('/github/callback', async (req, res) => {
     // Web Flow callback
     try {
         const { code, state } = req.query;
+        if (!state) return res.status(400).json({ status: 'error', message: 'Missing state' });
         if (!code) return res.status(400).json({ status: 'error', message: 'No code provided' });
 
         const user = await exchangeCodeForUser(code, process.env.GITHUB_CALLBACK_WEB);
@@ -51,17 +55,15 @@ router.get('/github/callback', async (req, res) => {
         res.cookie('access_token', access_token, { httpOnly: true, secure: false, maxAge: 3 * 60 * 1000 });
         res.cookie('refresh_token', refresh_token, { httpOnly: true, secure: false, maxAge: 5 * 60 * 1000 });
         
-        const frontendUrl = process.env.FRONTEND_URL || 'https://insighta-web.fly.dev';
-        const qs = new URLSearchParams();
-        if (state) qs.append('state', state);
-        qs.append('access_token', access_token);
-        qs.append('refresh_token', refresh_token);
-        
-        res.redirect(`${frontendUrl}/dashboard?${qs.toString()}`);
+        res.json({
+            status: 'success',
+            access_token,
+            refresh_token,
+            user: { id: user.id, role: user.role }
+        });
     } catch (error) {
         console.error("Web OAuth Error:", error.message);
-        const frontendUrl = process.env.FRONTEND_URL || 'https://insighta-web.fly.dev';
-        res.redirect(`${frontendUrl}/login?error=auth_failed`);
+        res.status(400).json({ status: 'error', message: 'Invalid code or state' });
     }
 });
 
@@ -84,6 +86,16 @@ router.post('/github/cli', async (req, res) => {
         res.status(500).json({ status: 'error', message: 'Authentication failed' });
     }
 });
+
+const enforcePost = (req, res, next) => {
+    if (req.method !== 'POST') {
+        return res.status(405).json({ status: 'error', message: 'Method Not Allowed' });
+    }
+    next();
+};
+
+router.use('/refresh', enforcePost);
+router.use('/logout', enforcePost);
 
 router.post('/refresh', async (req, res) => {
     const refresh_token = req.body.refresh_token || (req.cookies && req.cookies.refresh_token);
