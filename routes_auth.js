@@ -20,20 +20,25 @@ router.get('/github', (req, res) => {
     const client_id = process.env.GITHUB_CLIENT_ID;
     if (!client_id) return res.status(500).json({ status: 'error', message: 'OAuth not configured' });
     
-    // Generate a random state or PKCE standard depending on exact OAuth flow limits.
-    // For web portal we just redirect. 
     const params = new URLSearchParams({
         client_id,
         redirect_uri: process.env.GITHUB_CALLBACK_WEB,
         scope: 'read:user user:email'
     });
+    
+    for (const [key, value] of Object.entries(req.query)) {
+        if (!['client_id', 'redirect_uri', 'scope'].includes(key)) {
+            params.append(key, value);
+        }
+    }
+    
     res.redirect(`https://github.com/login/oauth/authorize?${params.toString()}`);
 });
 
 router.get('/github/callback', async (req, res) => {
     // Web Flow callback
     try {
-        const { code } = req.query;
+        const { code, state } = req.query;
         if (!code) return res.status(400).json({ status: 'error', message: 'No code provided' });
 
         const user = await exchangeCodeForUser(code, process.env.GITHUB_CALLBACK_WEB);
@@ -46,11 +51,17 @@ router.get('/github/callback', async (req, res) => {
         res.cookie('access_token', access_token, { httpOnly: true, secure: false, maxAge: 3 * 60 * 1000 });
         res.cookie('refresh_token', refresh_token, { httpOnly: true, secure: false, maxAge: 5 * 60 * 1000 });
         
-        // Target dashboard on port 3001
-        res.redirect('http://localhost:3001/dashboard');
+        const frontendUrl = process.env.FRONTEND_URL || 'https://insighta-web.fly.dev';
+        const qs = new URLSearchParams();
+        if (state) qs.append('state', state);
+        qs.append('access_token', access_token);
+        qs.append('refresh_token', refresh_token);
+        
+        res.redirect(`${frontendUrl}/dashboard?${qs.toString()}`);
     } catch (error) {
         console.error("Web OAuth Error:", error.message);
-        res.redirect('http://localhost:3001/login?error=auth_failed');
+        const frontendUrl = process.env.FRONTEND_URL || 'https://insighta-web.fly.dev';
+        res.redirect(`${frontendUrl}/login?error=auth_failed`);
     }
 });
 
